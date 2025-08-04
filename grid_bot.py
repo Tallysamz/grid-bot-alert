@@ -9,8 +9,11 @@ import time
 
 # ============ CONFIG =============
 
-TELEGRAM_TOKEN = os.environ["7702016556:AAEHotyy2l_TSM__loLKV9ZC7oo3duitJ8s"]
-CHAT_ID = os.environ["2096206738"]
+import os
+
+TELEGRAM_TOKEN = os.getenv("7702016556:AAEHotyy2l_TSM__loLKV9ZC7oo3duitJ8s")
+CHAT_ID = os.getenv("2096206738")
+
 
 # 👉 MULTI-ATIVOS: quantos quiser!
 SYMBOLS = [
