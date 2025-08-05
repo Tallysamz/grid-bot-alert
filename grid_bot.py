@@ -2,20 +2,15 @@ import requests
 import pandas as pd
 from ta.momentum import RSIIndicator
 from ta.trend import MACD
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import csv
 import os
 import time
 
 # ============ CONFIG =============
+TELEGRAM_TOKEN = os.getenv( "7702016556:AAEHotyy2l_TSM__loLKV9ZC7oo3duitJ8s")
+CHAT_ID = os.getenv( "2096206738")
 
-import os
-
-TELEGRAM_TOKEN = os.getenv("7702016556:AAEHotyy2l_TSM__loLKV9ZC7oo3duitJ8s")
-CHAT_ID = os.getenv("2096206738")
-
-
-# 👉 MULTI-ATIVOS: quantos quiser!
 SYMBOLS = [
     "BTC-USDT", "ETH-USDT", "SOL-USDT", "ADA-USDT", "XRP-USDT",
     "DOGE-USDT", "AVAX-USDT", "DOT-USDT", "MATIC-USDT", "BNB-USDT",
@@ -25,8 +20,12 @@ SYMBOLS = [
 ]
 
 NUM_GRIDS = 10
-STOP_LOSS_PERCENT = 0.03  # ✅ Protege cada grid
+STOP_LOSS_PERCENT = 0.03  # 3%
 TAKE_PROFIT_PERCENT = 0.03
+MIN_VOLATILIDADE = 2.5    # filtro mínimo de volatilidade (%)
+MAX_VOLATILIDADE = 8.0    # filtro máximo de volatilidade (%)
+MAX_RSI_ALERTA = 40       # RSI deve estar abaixo disso para alerta
+MIN_VOLUME = 1_000_000    # volume mínimo 24h para alerta
 LOG_FILE = "log.csv"
 
 # ============ FUNÇÕES =============
@@ -40,7 +39,7 @@ def get_market_data(symbol):
             "price": float(data["data"]["last"]),
             "high": float(data["data"]["high"]),
             "low": float(data["data"]["low"]),
-            "vol": float(data["data"]["vol"])
+            "vol": float(data["data"]["volValue"])  # volume em valor (USDT)
         }
     else:
         raise Exception(f"Erro ao buscar dados de mercado para {symbol}")
@@ -97,9 +96,24 @@ def salvar_log(data):
             ])
         writer.writerow(data)
 
+def gerar_resumo(oportunidades):
+    if not oportunidades:
+        return "Nenhuma oportunidade identificada nas últimas 3 horas."
+
+    resumo = "🕒 RESUMO DAS ÚLTIMAS 3 HORAS:\n\n"
+    for opp in oportunidades:
+        resumo += (
+            f"📈 {opp['symbol']} | Vol: {opp['volatilidade']:.2f}%\n"
+            f"💰 Faixa: {opp['preco_min']:.4f} - {opp['preco_max']:.4f}\n"
+            f"🔢 Grids: {NUM_GRIDS}\n\n"
+        )
+    return resumo
+
 # ============ EXECUÇÃO PRINCIPAL =============
 
 def main():
+    oportunidades = []
+
     for symbol in SYMBOLS:
         try:
             market_data = get_market_data(symbol)
@@ -121,7 +135,12 @@ def main():
 
             status = "SEM ALERTA"
 
-            if 1 <= volatilidade <= 8 and rsi < 40:
+            # FILTROS PRECISOS PARA ALERTA
+            if (
+                MIN_VOLATILIDADE <= volatilidade <= MAX_VOLATILIDADE
+                and vol >= MIN_VOLUME
+                and rsi < MAX_RSI_ALERTA
+            ):
                 mensagem = (
                     f"*📊 Grid Bot PRO - SINAL GERADO!*\n"
                     f"🔹 *Par:* {symbol}\n"
@@ -142,6 +161,12 @@ def main():
                 )
                 enviar_telegram(mensagem)
                 status = "ALERTA ENVIADO"
+                oportunidades.append({
+                    "symbol": symbol,
+                    "volatilidade": volatilidade,
+                    "preco_min": preco_min,
+                    "preco_max": preco_max
+                })
 
             salvar_log([
                 datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
@@ -154,11 +179,24 @@ def main():
         except Exception as e:
             print(f"❌ Erro para {symbol}: {e}")
 
+    return oportunidades
+
+
 if __name__ == "__main__":
+    last_summary_time = datetime.now(timezone.utc) - timedelta(hours=3)
+
     while True:
-        main()
-        print("⏳ Aguardando 30 minutos até o próximo ciclo...")
-        time.sleep(1800)  # Espera 30 minutos antes do próximo ciclo
+        oportunidades = main()
+
+        agora = datetime.now(timezone.utc)
+        if (agora - last_summary_time) >= timedelta(hours=3):
+            resumo = gerar_resumo(oportunidades)
+            enviar_telegram(resumo)
+            last_summary_time = agora
+
+        print("⏳ Aguardando 1 hora até o próximo ciclo...")
+        time.sleep(3600)  # Espera 1 hora antes do próximo ciclo
+
 
 
 
