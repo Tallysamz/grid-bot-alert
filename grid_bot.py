@@ -1,129 +1,125 @@
-import os
-import time
 import requests
-from datetime import datetime
-from ta.momentum import RSIIndicator
-from ta.trend import MACD
 import pandas as pd
+import numpy as np
+import time
+from datetime import datetime
+import telegram
+import asyncio
 
-# ================= CONFIG ===================
-TELEGRAM_TOKEN = os.getenv("7702016556:AAEHotyy2l_TSM__loLKV9ZC7oo3duitJ8s")
-CHAT_ID = os.getenv("2096206738")
-INTERVAL = 60 * 60  # verificar a cada 1 hora
-RESUMO_INTERVAL = 60 * 60 * 3  # resumo a cada 3 horas
-
-# Lista de criptos principais para análise
-CRYPTOS = [
-    "BTC-USDT", "ETH-USDT", "SOL-USDT", "AVAX-USDT",
-    "LINK-USDT", "MATIC-USDT", "ATOM-USDT", "AR-USDT",
-    "OP-USDT", "INJ-USDT", "RUNE-USDT", "TIA-USDT",
-    "BLUR-USDT", "RNDR-USDT", "JUP-USDT", "PYTH-USDT",
-    "SEI-USDT", "WIF-USDT", "DOGE-USDT", "SHIB-USDT"
+# === CONFIGURAÇÕES ===
+TOKEN = "7702016556:AAEHotyy2l_TSM__loLKV9ZC7oo3duitJ8s"
+CHAT_ID = "2096206738"
+symbols = [
+    "BTCUSDT", "ETHUSDT", "SOLUSDT", "AVAXUSDT",
+    "XRPUSDT", "MATICUSDT", "ADAUSDT", "DOGEUSDT",
+    "TRXUSDT", "DOTUSDT", "LINKUSDT", "ATOMUSDT"
 ]
 
-# ================ FUNÇÕES ===================
-def send_telegram(message):
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    payload = {"chat_id": CHAT_ID, "text": message, "parse_mode": "HTML"}
-    try:
-        requests.post(url, data=payload)
-    except Exception as e:
-        print("Erro ao enviar mensagem:", e)
+# Parâmetros do grid
+trailing_stop_pct = 0.03
+stop_loss_pct = 0.05
+grid_count = 10
+min_volatility = 2.5
 
-def get_ohlcv(symbol):
-    url = f"https://api.kucoin.com/api/v1/market/candles?type=1hour&symbol={symbol}"
+# === FUNÇÕES ===
+
+def get_klines(symbol, interval="15m", limit=96):
+    url = f"https://api.kucoin.com/api/v1/market/candles?type={interval}&symbol={symbol}&limit={limit}"
     response = requests.get(url)
-    candles = response.json().get("data", [])
-    if not candles:
-        return None
-    df = pd.DataFrame(candles, columns=["time", "open", "close", "high", "low", "volume", "turnover"])
-    df = df.iloc[::-1]  # inverter
-    df[["open", "close", "high", "low", "volume"]] = df[["open", "close", "high", "low", "volume"]].astype(float)
-    df["time"] = pd.to_datetime(df["time"], unit="s")
+    data = response.json()["data"]
+    df = pd.DataFrame(data, columns=["time", "open", "close", "high", "low", "vol", "turnover"])
+    df["time"] = pd.to_datetime(df["time"].astype(int), unit="s")
+    df = df.iloc[::-1].reset_index(drop=True)
+    df[["open", "close", "high", "low"]] = df[["open", "close", "high", "low"]].astype(float)
     return df
 
-def analisar_cripto(symbol):
-    df = get_ohlcv(symbol)
-    if df is None or len(df) < 26:
-        return None
+def calc_rsi(prices, period=14):
+    delta = prices.diff()
+    gain = np.where(delta > 0, delta, 0)
+    loss = np.where(delta < 0, -delta, 0)
+    avg_gain = pd.Series(gain).rolling(window=period).mean()
+    avg_loss = pd.Series(loss).rolling(window=period).mean()
+    rs = avg_gain / avg_loss
+    rsi = 100 - (100 / (1 + rs))
+    return rsi
 
-    rsi = RSIIndicator(df["close"], window=14).rsi().iloc[-1]
-    macd = MACD(df["close"]).macd_diff().iloc[-1]
-    close = df["close"].iloc[-1]
-    high = df["high"].max()
-    low = df["low"].min()
-    vol_24h = df["volume"].sum()
-    volatilidade = ((high - low) / close) * 100
+def calc_macd(prices, fast=12, slow=26, signal=9):
+    ema_fast = prices.ewm(span=fast, adjust=False).mean()
+    ema_slow = prices.ewm(span=slow, adjust=False).mean()
+    macd_line = ema_fast - ema_slow
+    signal_line = macd_line.ewm(span=signal, adjust=False).mean()
+    return macd_line, signal_line
 
-    oportunidade = rsi < 35 and macd > 0 and volatilidade > 4
+def analyze_symbol(symbol):
+    try:
+        df = get_klines(symbol)
+        if df is None or df.empty:
+            return None
 
-    return {
-        "symbol": symbol,
-        "close": close,
-        "rsi": round(rsi, 2),
-        "macd": round(macd, 4),
-        "volatilidade": round(volatilidade, 2),
-        "volume": round(vol_24h, 2),
-        "oportunidade": oportunidade
-    }
+        df["return"] = df["close"].pct_change()
+        volatility = df["return"].std() * 100
 
-def verificar_todas():
-    oportunidades = []
-    for symbol in CRYPTOS:
-        try:
-            dados = analisar_cripto(symbol)
-            if dados and dados["oportunidade"]:
-                oportunidades.append(dados)
-        except Exception as e:
-            print(f"Erro em {symbol}: {e}")
-    return oportunidades
+        rsi = calc_rsi(df["close"]).iloc[-1]
+        macd_line, signal_line = calc_macd(df["close"])
+        macd_cross = macd_line.iloc[-1] > signal_line.iloc[-1]
 
-def formatar_mensagem(oportunidades):
-    if not oportunidades:
-        return "⚠️ Nenhuma oportunidade de grid encontrada no momento."
-    mensagem = "🚨 <b>Oportunidades de GRID encontradas:</b>\n\n"
-    for o in oportunidades:
-        mensagem += (
-            f"🔹 <b>{o['symbol']}</b>\n"
-            f"Preço: ${o['close']}\n"
-            f"RSI: {o['rsi']} | MACD: {o['macd']}\n"
-            f"Volatilidade 24h: {o['volatilidade']}%\n"
-            f"Volume 24h: {o['volume']}\n"
-            "------------------------\n"
-        )
-    return mensagem
+        price = df["close"].iloc[-1]
+        lower_price = price * (1 - (volatility / 100) / 2)
+        upper_price = price * (1 + (volatility / 100) / 2)
+        grid_spacing = (upper_price - lower_price) / grid_count
 
-def enviar_resumo():
-    resumo = []
-    for symbol in CRYPTOS:
-        try:
-            dados = analisar_cripto(symbol)
-            if dados:
-                resumo.append(dados)
-        except:
-            continue
-    mensagem = "🧾 <b>Resumo geral das criptos:</b>\n\n"
-    for r in resumo:
-        mensagem += (
-            f"{r['symbol']} | RSI: {r['rsi']} | MACD: {r['macd']} | Vol: {r['volatilidade']}%\n"
-        )
-    send_telegram(mensagem)
+        stop_loss = price * (1 - stop_loss_pct)
+        trailing_stop = price * (1 + trailing_stop_pct)
 
-# =============== LOOP ========================
-print("🤖 Bot de Grid rodando com sucesso...")
-ultimo_resumo = time.time()
+        if volatility >= min_volatility and 40 < rsi < 70 and macd_cross:
+            return {
+                "symbol": symbol,
+                "price": price,
+                "volatility": round(volatility, 2),
+                "lower": round(lower_price, 4),
+                "upper": round(upper_price, 4),
+                "grids": grid_count,
+                "spacing": round(grid_spacing, 4),
+                "stop_loss": round(stop_loss, 4),
+                "trailing_stop": round(trailing_stop, 4),
+                "rsi": round(rsi, 2),
+                "macd_cross": macd_cross
+            }
+    except Exception as e:
+        print(f"[ERRO] {symbol}: {e}")
+    return None
 
-while True:
-    agora = time.time()
-    oportunidades = verificar_todas()
-    mensagem = formatar_mensagem(oportunidades)
-    send_telegram(mensagem)
+async def send_message(bot, chat_id, message):
+    await bot.send_message(chat_id=chat_id, text=message, parse_mode="HTML")
 
-    if agora - ultimo_resumo >= RESUMO_INTERVAL:
-        enviar_resumo()
-        ultimo_resumo = agora
+async def main():
+    bot = telegram.Bot(token=TOKEN)
+    results = []
 
-    time.sleep(INTERVAL)
+    for symbol in symbols:
+        result = analyze_symbol(symbol)
+        if result:
+            results.append(result)
+
+    if results:
+        text = "<b>📊 Oportunidades de Grid Spot (KuCoin)</b>\n\n"
+        for r in results:
+            text += (
+                f"<b>{r['symbol']}</b> 🟢\n"
+                f"💰 Preço: <b>{r['price']}</b>\n"
+                f"📈 Volatilidade: <b>{r['volatility']}%</b>\n"
+                f"📊 RSI: <b>{r['rsi']}</b>\n"
+                f"📉 Faixa: <b>{r['lower']} - {r['upper']}</b>\n"
+                f"📌 Grids: <b>{r['grids']}</b> (Espaço: {r['spacing']})\n"
+                f"🛑 SL: <b>{r['stop_loss']}</b> | 🔁 TS: <b>{r['trailing_stop']}</b>\n\n"
+            )
+        await send_message(bot, CHAT_ID, text)
+    else:
+        print("Nenhuma oportunidade encontrada.")
+
+# === EXECUÇÃO ===
+if __name__ == "__main__":
+    asyncio.run(main())
 
 
 
