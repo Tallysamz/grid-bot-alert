@@ -9,8 +9,9 @@ import csv
 
 # ======= CONFIGURAÇÕES ========
 
-TELEGRAM_TOKEN = os.getenv("7702016556:AAEHotyy2l_TSM__loLKV9ZC7oo3duitJ8s")  # coloque seu token no env
-CHAT_ID = os.getenv("2096206738")  # coloque seu chat_id no env
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+# coloque seu chat_id no env
 
 SYMBOLS = [
     "BTC-USDT", "ETH-USDT", "SOL-USDT", "ADA-USDT", "XRP-USDT",
