@@ -101,7 +101,7 @@ def format_summary(results):
     f"Preço: {price:.2f} | Grid: {grid_min:.2f} - {grid_max:.2f} | "
     f"Grids: {grid_count} | SL: {stop_loss:.2f} | Trailing: {trailing_stop:.2f}\n")
 
-           send_telegram_message(
+    send_telegram_message(
     f"🔁 Grid ativo\nPar: {pair}\n"
     f"RSI: {rsi:.2f} | MFI: {mfi:.2f}\n"
     f"Preço de entrada: {price}\n"
