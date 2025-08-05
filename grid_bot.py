@@ -99,7 +99,12 @@ def format_summary(results):
         summary += (
             f"✅ `{data['symbol']}` | Preço: `${data['price']:.4f}` | Vol: `{data['volatility']:.2%}` | "
             f"RSI: `{data['rsi']:.1f}` | MACD: `{data['macd']:.2f}` > `{data['signal']:.2f}`\n"
-            f"🔁 Gri
+           send_telegram_message(
+    f"🔁 Grid ativo\nPar: {pair}\n"
+    f"RSI: {rsi:.2f} | MFI: {mfi:.2f}\n"
+    f"Preço de entrada: {price}\n"
+    f"Preço limite: {price + grid_size}")
+
 
 
 
