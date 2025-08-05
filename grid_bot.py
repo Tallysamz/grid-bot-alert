@@ -3,14 +3,14 @@ import pandas as pd
 from ta.momentum import RSIIndicator
 from ta.trend import MACD
 from datetime import datetime, timezone
-import csv
 import os
 import time
+import csv
 
-# ============ CONFIG =============
+# ======= CONFIGURAÇÕES ========
 
-TELEGRAM_TOKEN = os.getenv("7702016556:AAEHotyy2l_TSM__loLKV9ZC7oo3duitJ8s")
-CHAT_ID = os.getenv("2096206738")
+TELEGRAM_TOKEN = os.getenv("7702016556:AAEHotyy2l_TSM__loLKV9ZC7oo3duitJ8s")  # coloque seu token no env
+CHAT_ID = os.getenv("2096206738")  # coloque seu chat_id no env
 
 SYMBOLS = [
     "BTC-USDT", "ETH-USDT", "SOL-USDT", "ADA-USDT", "XRP-USDT",
@@ -21,14 +21,14 @@ SYMBOLS = [
 ]
 
 NUM_GRIDS = 10
-STOP_LOSS_PERCENT = 0.03  # Protege cada grid
+STOP_LOSS_PERCENT = 0.03
 TAKE_PROFIT_PERCENT = 0.03
 LOG_FILE = "log.csv"
 
-CHECK_INTERVAL = 3600  # 1 hora entre checagens
-SUMMARY_INTERVAL = 10800  # 3 horas para enviar resumo
+CHECK_INTERVAL = 3600  # 1 hora em segundos
+SUMMARY_INTERVAL = 10800  # 3 horas em segundos
 
-# ============ FUNÇÕES =============
+# ======= FUNÇÕES ========
 
 def get_market_data(symbol):
     url = f"https://api.kucoin.com/api/v1/market/stats?symbol={symbol}"
@@ -42,10 +42,10 @@ def get_market_data(symbol):
             "vol": float(data["data"]["vol"])
         }
     else:
-        raise Exception(f"Erro ao buscar dados de mercado para {symbol}")
+        return None
 
 def get_candles(symbol):
-    url = f"https://api.kucoin.com/api/v1/market/candles?type=1hour&symbol={symbol}&limit=24"
+    url = f"https://api.kucoin.com/api/v1/market/candles?type=1hour&symbol={symbol}"
     response = requests.get(url)
     data = response.json()
     if data["code"] == "200000":
@@ -55,7 +55,7 @@ def get_candles(symbol):
         df = df.iloc[::-1].reset_index(drop=True)  # ordem cronológica
         return df
     else:
-        raise Exception(f"Erro ao buscar candles para {symbol}")
+        return None
 
 def calcular_indicadores(df):
     rsi = RSIIndicator(close=df["close"], window=14).rsi().iloc[-1]
@@ -83,7 +83,7 @@ def enviar_telegram(mensagem):
         "parse_mode": "Markdown"
     }
     response = requests.post(url, json=payload)
-    print("Resposta do Telegram:", response.text)
+    print("Telegram response:", response.text)
 
 def salvar_log(data):
     file_exists = os.path.isfile(LOG_FILE)
@@ -96,20 +96,25 @@ def salvar_log(data):
             ])
         writer.writerow(data)
 
-def main():
-    alertas = []
+def analisar_ativos():
+    oportunidades = []
 
     for symbol in SYMBOLS:
         try:
             market_data = get_market_data(symbol)
+            if market_data is None:
+                print(f"Erro ao buscar dados de mercado para {symbol}")
+                continue
+
             preco_atual = market_data["price"]
             high = market_data["high"]
             low = market_data["low"]
             vol = market_data["vol"]
 
             candles_df = get_candles(symbol)
-            if candles_df.isnull().values.any():
-                raise Exception(f"Candles incompletos para {symbol}")
+            if candles_df is None or candles_df.isnull().values.any():
+                print(f"Candles inválidos para {symbol}")
+                continue
 
             rsi, macd_line, signal_line = calcular_indicadores(candles_df)
 
@@ -119,15 +124,18 @@ def main():
             take_profit = preco_atual * (1 + TAKE_PROFIT_PERCENT)
 
             status = "SEM ALERTA"
+            opportunity = False
 
-            if 1 <= volatilidade <= 8 and rsi < 40:
+            # FILTROS precisos
+            if 0.01 <= volatilidade <= 0.08 and rsi < 40 and macd_line > signal_line:
+                opportunity = True
                 mensagem = (
                     f"*📊 Grid Bot PRO - SINAL GERADO!*\n"
                     f"🔹 *Par:* {symbol}\n"
                     f"💰 *Preço Atual:* ${preco_atual:.2f}\n"
                     f"📈 *Alta 24h:* ${high:.2f}\n"
                     f"📉 *Baixa 24h:* ${low:.2f}\n"
-                    f"🌊 *Volatilidade:* {volatilidade:.2f}%\n"
+                    f"🌊 *Volatilidade:* {volatilidade*100:.2f}%\n"
                     f"📦 *Volume 24h:* {vol:.2f}\n"
                     f"📊 *RSI(14):* {rsi}\n"
                     f"📊 *MACD Line:* {macd_line}\n"
@@ -141,58 +149,70 @@ def main():
                 )
                 enviar_telegram(mensagem)
                 status = "ALERTA ENVIADO"
-                alertas.append({
-                    "symbol": symbol,
-                    "volatilidade": volatilidade,
-                    "rsi": rsi,
-                    "preco_min": preco_min,
-                    "preco_max": preco_max,
-                    "num_grids": NUM_GRIDS,
-                    "stop_loss": stop_loss,
-                    "take_profit": take_profit,
-                    "preco_atual": preco_atual
-                })
 
             salvar_log([
                 datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
-                symbol, preco_atual, high, low, f"{volatilidade:.2f}%",
+                symbol, preco_atual, high, low, f"{volatilidade*100:.2f}%",
                 vol, rsi, macd_line, signal_line, status
             ])
 
-            print(f"✅ [{symbol}] Log salvo - Status: {status}")
+            if opportunity:
+                oportunidades.append({
+                    "symbol": symbol,
+                    "price": preco_atual,
+                    "volatility": volatilidade*100,
+                    "rsi": rsi,
+                    "macd": macd_line,
+                    "signal": signal_line,
+                    "grid_min": preco_min,
+                    "grid_max": preco_max,
+                    "num_grids": NUM_GRIDS,
+                    "stop_loss": stop_loss,
+                    "take_profit": take_profit
+                })
+
+            print(f"✅ [{symbol}] Status: {status}")
 
         except Exception as e:
             print(f"❌ Erro para {symbol}: {e}")
 
-    return alertas
+    return oportunidades
 
-def enviar_resumo(alertas):
-    if not alertas:
+def enviar_resumo(oportunidades):
+    if not oportunidades:
+        print("Nenhuma oportunidade para resumo.")
         return
+
     mensagem = "*⏰ RESUMO DAS MELHORES OPORTUNIDADES (Últimas 3h)*\n\n"
-    for a in alertas:
+    for opp in oportunidades:
         mensagem += (
-            f"📊 {a['symbol']} | Volatilidade: {a['volatilidade']:.2f}% | RSI: {a['rsi']:.2f}\n"
-            f"Faixa do Grid: ${a['preco_min']:.2f} - ${a['preco_max']:.2f} | Grids: {a['num_grids']}\n"
-            f"Stop Loss: ${a['stop_loss']:.2f} | Take Profit: ${a['take_profit']:.2f}\n\n"
+            f"📊 *{opp['symbol']}* | RSI: {opp['rsi']:.2f} | Vol: {opp['volatility']:.2f}% | "
+            f"Preço: ${opp['price']:.2f} | Grid: ${opp['grid_min']:.2f} - ${opp['grid_max']:.2f} | "
+            f"Grids: {opp['num_grids']} | SL: ${opp['stop_loss']:.2f} | TP: ${opp['take_profit']:.2f}\n"
         )
+
     enviar_telegram(mensagem)
 
+# ======= EXECUÇÃO ========
+
 if __name__ == "__main__":
-    alertas_acumulados = []
-    inicio_resumo = time.time()
+    start_time = time.time()
+    resumo_oportunidades = []
 
     while True:
-        alertas_do_ciclo = main()
-        alertas_acumulados.extend(alertas_do_ciclo)
+        ciclo_start = time.time()
 
-        agora = time.time()
-        if agora - inicio_resumo >= SUMMARY_INTERVAL:
-            enviar_resumo(alertas_acumulados)
-            alertas_acumulados = []
-            inicio_resumo = agora
+        # Analisar ativos e enviar alertas individuais
+        oportunidades = analisar_ativos()
+        resumo_oportunidades.extend(oportunidades)
 
-        print("⏳ Aguardando 1 hora até o próximo ciclo...")
+        # Se passaram 3 horas desde último resumo, envia resumo e limpa lista
+        if ciclo_start - start_time >= SUMMARY_INTERVAL:
+            enviar_resumo(resumo_oportunidades)
+            resumo_oportunidades = []
+            start_time = ciclo_start
+
+        print(f"⏳ Próximo ciclo em {CHECK_INTERVAL/60:.0f} minutos...")
         time.sleep(CHECK_INTERVAL)
 
 
