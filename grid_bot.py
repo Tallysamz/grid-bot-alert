@@ -97,8 +97,10 @@ def format_summary(results):
     summary = "*⏰ RESUMO DAS MELHORES OPORTUNIDADES (Últimas 3h)*\n\n"
     for data in results:
         summary += (
-            f"✅ `{data['symbol']}` | Preço: `${data['price']:.4f}` | Vol: `{data['volatility']:.2%}` | "
-            f"RSI: `{data['rsi']:.1f}` | MACD: `{data['macd']:.2f}` > `{data['signal']:.2f}`\n"
+    f"📊 {pair} | RSI: {rsi:.2f} | MFI: {mfi:.2f} | Vol: {volatility:.2f}% | "
+    f"Preço: {price:.2f} | Grid: {grid_min:.2f} - {grid_max:.2f} | "
+    f"Grids: {grid_count} | SL: {stop_loss:.2f} | Trailing: {trailing_stop:.2f}\n")
+
            send_telegram_message(
     f"🔁 Grid ativo\nPar: {pair}\n"
     f"RSI: {rsi:.2f} | MFI: {mfi:.2f}\n"
