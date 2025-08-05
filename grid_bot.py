@@ -1,114 +1,131 @@
 import os
-import requests
 import time
-from datetime import datetime, timedelta
+import requests
+from datetime import datetime
+from ta.momentum import RSIIndicator
+from ta.trend import MACD
+import pandas as pd
 
-# ============ CONFIG =============
-API_URL = "https://api.kucoin.com/api/v1/market/stats?symbol={symbol}"
-LISTA_ATIVOS = [
-    "BTC-USDT", "ETH-USDT", "SOL-USDT", "AVAX-USDT", "NEAR-USDT",
-    "INJ-USDT", "RNDR-USDT", "TIA-USDT", "PYTH-USDT", "AR-USDT",
-    "APE-USDT", "BLUR-USDT", "LDO-USDT", "MANTA-USDT", "SUI-USDT",
-    "SEI-USDT", "HOOK-USDT", "GMT-USDT", "RAY-USDT", "ID-USDT"
+# ================= CONFIG ===================
+TELEGRAM_TOKEN = os.getenv("7702016556:AAEHotyy2l_TSM__loLKV9ZC7oo3duitJ8s")
+CHAT_ID = os.getenv("2096206738")
+INTERVAL = 60 * 60  # verificar a cada 1 hora
+RESUMO_INTERVAL = 60 * 60 * 3  # resumo a cada 3 horas
+
+# Lista de criptos principais para análise
+CRYPTOS = [
+    "BTC-USDT", "ETH-USDT", "SOL-USDT", "AVAX-USDT",
+    "LINK-USDT", "MATIC-USDT", "ATOM-USDT", "AR-USDT",
+    "OP-USDT", "INJ-USDT", "RUNE-USDT", "TIA-USDT",
+    "BLUR-USDT", "RNDR-USDT", "JUP-USDT", "PYTH-USDT",
+    "SEI-USDT", "WIF-USDT", "DOGE-USDT", "SHIB-USDT"
 ]
 
-VOL_MIN = 3.5  # volatilidade mínima (%)
-VOLUME_NEGOCIO_MIN = 1_000_000  # volume mínimo em USDT
-LIMITE_GRID = 10  # número de grids
-
-CHAT_ID = os.getenv("CHAT_ID")
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-
-last_summary_time = datetime.now() - timedelta(hours=3)
-
-# ============ FUNÇÕES =============
-def enviar_mensagem_telegram(mensagem):
+# ================ FUNÇÕES ===================
+def send_telegram(message):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    payload = {"chat_id": CHAT_ID, "text": mensagem, "parse_mode": "HTML"}
+    payload = {"chat_id": CHAT_ID, "text": message, "parse_mode": "HTML"}
     try:
         requests.post(url, data=payload)
     except Exception as e:
-        print(f"Erro ao enviar mensagem: {e}")
+        print("Erro ao enviar mensagem:", e)
 
-def buscar_dados(symbol):
-    try:
-        url = API_URL.format(symbol=symbol)
-        r = requests.get(url)
-        data = r.json()["data"]
-        return {
-            "simbolo": symbol,
-            "preco": float(data["last"]),
-            "volatilidade": abs(float(data["changeRate"])) * 100,
-            "volume": float(data["volValue"]),
-        }
-    except:
+def get_ohlcv(symbol):
+    url = f"https://api.kucoin.com/api/v1/market/candles?type=1hour&symbol={symbol}"
+    response = requests.get(url)
+    candles = response.json().get("data", [])
+    if not candles:
         return None
+    df = pd.DataFrame(candles, columns=["time", "open", "close", "high", "low", "volume", "turnover"])
+    df = df.iloc[::-1]  # inverter
+    df[["open", "close", "high", "low", "volume"]] = df[["open", "close", "high", "low", "volume"]].astype(float)
+    df["time"] = pd.to_datetime(df["time"], unit="s")
+    return df
 
 def analisar_cripto(symbol):
-    dados = buscar_dados(symbol)
-    if not dados:
+    df = get_ohlcv(symbol)
+    if df is None or len(df) < 26:
         return None
 
-    faixa = dados["preco"] * dados["volatilidade"] / 100
-    dados.update({
-        "faixa_min": round(dados["preco"] - faixa, 4),
-        "faixa_max": round(dados["preco"] + faixa, 4),
-        "grids": LIMITE_GRID,
-        "stop_loss": round(dados["preco"] * 0.85, 4),
-        "trailing_stop": 3
-    })
-    return dados
+    rsi = RSIIndicator(df["close"], window=14).rsi().iloc[-1]
+    macd = MACD(df["close"]).macd_diff().iloc[-1]
+    close = df["close"].iloc[-1]
+    high = df["high"].max()
+    low = df["low"].min()
+    vol_24h = df["volume"].sum()
+    volatilidade = ((high - low) / close) * 100
 
-def passou_nos_filtros(dados):
-    return (
-        dados["volatilidade"] >= VOL_MIN
-        and dados["volume"] >= VOLUME_NEGOCIO_MIN
-    )
+    oportunidade = rsi < 35 and macd > 0 and volatilidade > 4
 
-def enviar_alerta_telegram(dados):
-    msg = (
-        f"🚨 <b>Oportunidade Detectada!</b> 🚨\n"
-        f"<b>Cripto:</b> {dados['simbolo']}\n"
-        f"<b>Preço Atual:</b> {dados['preco']}\n"
-        f"<b>Volatilidade:</b> {dados['volatilidade']}%\n"
-        f"<b>Volume 24h:</b> {round(dados['volume']):,} USDT\n"
-        f"<b>Faixa de Grid:</b> {dados['faixa_min']} - {dados['faixa_max']}\n"
-        f"<b>Grids:</b> {dados['grids']}\n"
-        f"<b>Stop Loss:</b> {dados['stop_loss']}\n"
-        f"<b>Trailing Stop:</b> {dados['trailing_stop']}%"
-    )
-    enviar_mensagem_telegram(msg)
+    return {
+        "symbol": symbol,
+        "close": close,
+        "rsi": round(rsi, 2),
+        "macd": round(macd, 4),
+        "volatilidade": round(volatilidade, 2),
+        "volume": round(vol_24h, 2),
+        "oportunidade": oportunidade
+    }
 
-def gerar_resumo(lista):
-    if not lista:
-        return "Nenhuma oportunidade identificada nas últimas 3 horas."
-
-    resumo = ""
-    for c in lista:
-        resumo += (
-            f"📈 {c['simbolo']} | Vol: {c['volatilidade']}%\n"
-            f"💰 Faixa: {c['faixa_min']} - {c['faixa_max']}\n"
-            f"🔢 Grids: {c['grids']}\n\n"
-        )
-    return resumo
-
-# ============ LOOP PRINCIPAL =============
-while True:
+def verificar_todas():
     oportunidades = []
+    for symbol in CRYPTOS:
+        try:
+            dados = analisar_cripto(symbol)
+            if dados and dados["oportunidade"]:
+                oportunidades.append(dados)
+        except Exception as e:
+            print(f"Erro em {symbol}: {e}")
+    return oportunidades
 
-    for ativo in LISTA_ATIVOS:
-        dados = analisar_cripto(ativo)
-        if dados and passou_nos_filtros(dados):
-            oportunidades.append(dados)
-            enviar_alerta_telegram(dados)
+def formatar_mensagem(oportunidades):
+    if not oportunidades:
+        return "⚠️ Nenhuma oportunidade de grid encontrada no momento."
+    mensagem = "🚨 <b>Oportunidades de GRID encontradas:</b>\n\n"
+    for o in oportunidades:
+        mensagem += (
+            f"🔹 <b>{o['symbol']}</b>\n"
+            f"Preço: ${o['close']}\n"
+            f"RSI: {o['rsi']} | MACD: {o['macd']}\n"
+            f"Volatilidade 24h: {o['volatilidade']}%\n"
+            f"Volume 24h: {o['volume']}\n"
+            "------------------------\n"
+        )
+    return mensagem
 
-    agora = datetime.now()
-    if agora - last_summary_time >= timedelta(hours=3):
-        resumo = gerar_resumo(oportunidades)
-        enviar_mensagem_telegram(f"🕒 <b>RESUMO DAS ÚLTIMAS 3 HORAS:</b>\n\n{resumo}")
-        last_summary_time = agora
+def enviar_resumo():
+    resumo = []
+    for symbol in CRYPTOS:
+        try:
+            dados = analisar_cripto(symbol)
+            if dados:
+                resumo.append(dados)
+        except:
+            continue
+    mensagem = "🧾 <b>Resumo geral das criptos:</b>\n\n"
+    for r in resumo:
+        mensagem += (
+            f"{r['symbol']} | RSI: {r['rsi']} | MACD: {r['macd']} | Vol: {r['volatilidade']}%\n"
+        )
+    send_telegram(mensagem)
 
-    time.sleep(60 * 60)  # Executa a cada 1h
+# =============== LOOP ========================
+print("🤖 Bot de Grid rodando com sucesso...")
+ultimo_resumo = time.time()
+
+while True:
+    agora = time.time()
+    oportunidades = verificar_todas()
+    mensagem = formatar_mensagem(oportunidades)
+    send_telegram(mensagem)
+
+    if agora - ultimo_resumo >= RESUMO_INTERVAL:
+        enviar_resumo()
+        ultimo_resumo = agora
+
+    time.sleep(INTERVAL)
+
+
 
 
 
