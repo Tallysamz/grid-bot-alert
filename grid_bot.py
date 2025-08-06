@@ -78,9 +78,11 @@ def send_telegram_message(message):
 
 # Lista de moedas para monitorar
 symbols = [
-    "BTC", "ETH", "AVAX", "SOL", "ADA", "XRP", "MATIC", "AR", "RNDR", "LTC",
-    "FET", "OP", "INJ", "TIA", "NEAR", "DOGE", "PEPE", "BLUR", "SUI", "PYTH",
-    "ORDI", "TRB", "GALA", "ZRX", "MINA"
+    "BTC-USDT", "ETH-USDT", "AVAX-USDT", "SOL-USDT", "ADA-USDT", "XRP-USDT",
+    "MATIC-USDT", "AR-USDT", "RNDR-USDT", "LTC-USDT", "FET-USDT", "OP-USDT",
+    "INJ-USDT", "TIA-USDT", "NEAR-USDT", "DOGE-USDT", "PEPE-USDT", "BLUR-USDT",
+    "SUI-USDT", "PYTH-USDT", "ORDI-USDT", "TRB-USDT", "GALA-USDT", "ZRX-USDT",
+    "MINA-USDT"
 ]
 
 # Executar análise
