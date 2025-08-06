@@ -13,13 +13,17 @@ STOP_LOSS_PCT = 3
 TRAILING_STOP_PCT = 3
 
 def get_klines(symbol, interval='1h', limit=24):
-    url = f"https://api.kucoin.com/api/v1/market/candles?type={interval}&symbol={symbol}-USDT&limit={limit}"
+    url = f"https://api.kucoin.com/api/v1/market/candles?type={interval}&symbol={symbol}&limit={limit}"
     try:
         response = requests.get(url)
-        data = response.json().get("data", [])
+        data_json = response.json()
+        print(f"DEBUG {symbol}: {data_json}")  # <--- Linha adicionada para diagnóstico
+
+        data = data_json.get("data", [])
         if not data:
             print(f"Erro: dados vazios para {symbol}")
             return None
+
         df = pd.DataFrame(data, columns=["time", "open", "close", "high", "low", "volume", "turnover"])
         df = df.iloc[::-1]  # Inverte para ordem cronológica
         df[["open", "close", "high", "low", "volume"]] = df[["open", "close", "high", "low", "volume"]].astype(float)
@@ -93,6 +97,7 @@ for symbol in symbols:
     msg = analyze_symbol(symbol)
     if msg:
         send_telegram_message(msg)
+
 
 
 
