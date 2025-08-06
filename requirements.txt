@@ -1,5 +1,6 @@
 requests
 pandas
-ta==0.10.2
+ta
+python-dotenv
 
 
