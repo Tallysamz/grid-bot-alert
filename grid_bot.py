@@ -1,4 +1,5 @@
 import os
+import time
 import pandas as pd
 import requests
 from ta.momentum import RSIIndicator
@@ -17,6 +18,7 @@ def get_klines(symbol, interval='1hour', limit=24):
     try:
         response = requests.get(url)
         data_json = response.json()
+        # print(f"DEBUG {symbol}: {data_json}")  # Removido para evitar travamento
 
         data = data_json.get("data", [])
         if not data:
@@ -24,7 +26,7 @@ def get_klines(symbol, interval='1hour', limit=24):
             return None
 
         df = pd.DataFrame(data, columns=["time", "open", "close", "high", "low", "volume", "turnover"])
-        df = df.iloc[::-1]  # Ordem cronológica
+        df = df.iloc[::-1]  # Inverte para ordem cronológica
         df[["open", "close", "high", "low", "volume"]] = df[["open", "close", "high", "low", "volume"]].astype(float)
         return df
     except Exception as e:
@@ -82,19 +84,31 @@ def send_telegram_message(message):
     if response.status_code != 200:
         print(f"Erro ao enviar mensagem: {response.text}")
 
-# Lista de moedas para monitorar (sem MATIC, RNDR, GALA)
+# Lista de moedas para monitorar (sem ativos que deram problema)
 symbols = [
     "BTC-USDT", "ETH-USDT", "AVAX-USDT", "SOL-USDT", "ADA-USDT", "XRP-USDT",
-    "AR-USDT", "LTC-USDT", "FET-USDT", "OP-USDT", "INJ-USDT", "TIA-USDT",
-    "NEAR-USDT", "DOGE-USDT", "PEPE-USDT", "BLUR-USDT", "SUI-USDT", "PYTH-USDT",
-    "ORDI-USDT", "TRB-USDT", "ZRX-USDT", "MINA-USDT"
+    "AR-USDT", "LTC-USDT", "FET-USDT", "OP-USDT",
+    "INJ-USDT", "TIA-USDT", "NEAR-USDT", "DOGE-USDT", "PEPE-USDT", "BLUR-USDT",
+    "SUI-USDT", "PYTH-USDT", "ORDI-USDT", "TRB-USDT", "ZRX-USDT",
+    "MINA-USDT"
 ]
 
-# Executar análise
-for symbol in symbols:
-    msg = analyze_symbol(symbol)
-    if msg:
-        send_telegram_message(msg)
+def run_bot():
+    print("Iniciando análise...")
+    for symbol in symbols:
+        try:
+            msg = analyze_symbol(symbol)
+            if msg:
+                send_telegram_message(msg)
+        except Exception as e:
+            print(f"Erro na análise de {symbol}: {e}")
+    print("Análise concluída.")
+
+if __name__ == "__main__":
+    while True:
+        run_bot()
+        print("Aguardando 1 hora para próxima execução...\n")
+        time.sleep(3600)  # pausa 3600 segundos = 1 hora
 
 
 
