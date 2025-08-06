@@ -9,8 +9,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")  
+CHAT_ID = os.getenv("CHAT_ID")
 
 SYMBOLS = [
     "BTC-USDT", "ETH-USDT", "SOL-USDT", "AVAX-USDT", "ADA-USDT", "MATIC-USDT",
