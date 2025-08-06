@@ -12,7 +12,7 @@ CHAT_ID = os.getenv("CHAT_ID")
 STOP_LOSS_PCT = 3
 TRAILING_STOP_PCT = 3
 
-def get_klines(symbol, interval='1h', limit=24):
+def get_klines(symbol, interval='1day', limit=24):
     url = f"https://api.kucoin.com/api/v1/market/candles?type={interval}&symbol={symbol}&limit={limit}"
     try:
         response = requests.get(url)
