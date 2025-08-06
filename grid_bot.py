@@ -92,11 +92,15 @@ symbols = [
     "MINA-USDT"
 ]
 
-# Executar análise
-for symbol in symbols:
-    msg = analyze_symbol(symbol)
-    if msg:
-        send_telegram_message(msg)
+if __name__ == "__main__":
+    try:
+        for symbol in symbols:
+            msg = analyze_symbol(symbol)
+            if msg:
+                send_telegram_message(msg)
+    except Exception as e:
+        print(f"Erro crítico: {e}")
+
 
 
 
