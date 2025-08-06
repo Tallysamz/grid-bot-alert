@@ -17,7 +17,6 @@ def get_klines(symbol, interval='1hour', limit=24):
     try:
         response = requests.get(url)
         data_json = response.json()
-        # print(f"DEBUG {symbol}: {data_json}")  # Removido para evitar travamento
 
         data = data_json.get("data", [])
         if not data:
@@ -25,7 +24,7 @@ def get_klines(symbol, interval='1hour', limit=24):
             return None
 
         df = pd.DataFrame(data, columns=["time", "open", "close", "high", "low", "volume", "turnover"])
-        df = df.iloc[::-1]  # Inverte para ordem cronológica
+        df = df.iloc[::-1]  # Ordem cronológica
         df[["open", "close", "high", "low", "volume"]] = df[["open", "close", "high", "low", "volume"]].astype(float)
         return df
     except Exception as e:
@@ -46,7 +45,7 @@ def analyze_symbol(symbol):
     macd_calc = MACD(close=df["close"])
     macd_val = macd_calc.macd().iloc[-1]
     signal_val = macd_calc.macd_signal().iloc[-1]
-    
+
     volume_avg = df["volume"].tail(20).mean()
     volume_now = df["volume"].iloc[-1]
 
@@ -83,23 +82,20 @@ def send_telegram_message(message):
     if response.status_code != 200:
         print(f"Erro ao enviar mensagem: {response.text}")
 
-# Lista de moedas para monitorar
+# Lista de moedas para monitorar (sem MATIC, RNDR, GALA)
 symbols = [
     "BTC-USDT", "ETH-USDT", "AVAX-USDT", "SOL-USDT", "ADA-USDT", "XRP-USDT",
-    "MATIC-USDT", "AR-USDT", "RNDR-USDT", "LTC-USDT", "FET-USDT", "OP-USDT",
-    "INJ-USDT", "TIA-USDT", "NEAR-USDT", "DOGE-USDT", "PEPE-USDT", "BLUR-USDT",
-    "SUI-USDT", "PYTH-USDT", "ORDI-USDT", "TRB-USDT", "GALA-USDT", "ZRX-USDT",
-    "MINA-USDT"
+    "AR-USDT", "LTC-USDT", "FET-USDT", "OP-USDT", "INJ-USDT", "TIA-USDT",
+    "NEAR-USDT", "DOGE-USDT", "PEPE-USDT", "BLUR-USDT", "SUI-USDT", "PYTH-USDT",
+    "ORDI-USDT", "TRB-USDT", "ZRX-USDT", "MINA-USDT"
 ]
 
-if __name__ == "__main__":
-    try:
-        for symbol in symbols:
-            msg = analyze_symbol(symbol)
-            if msg:
-                send_telegram_message(msg)
-    except Exception as e:
-        print(f"Erro crítico: {e}")
+# Executar análise
+for symbol in symbols:
+    msg = analyze_symbol(symbol)
+    if msg:
+        send_telegram_message(msg)
+
 
 
 
