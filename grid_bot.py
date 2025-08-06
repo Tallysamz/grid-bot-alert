@@ -1,51 +1,29 @@
 import os
-import time
-import requests
 import pandas as pd
-from datetime import datetime
+import requests
 from ta.momentum import RSIIndicator
 from ta.trend import MACD
 from dotenv import load_dotenv
 
 load_dotenv()
 
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")  
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
-
-SYMBOLS = [
-    "BTC-USDT", "ETH-USDT", "SOL-USDT", "AVAX-USDT", "ADA-USDT", "MATIC-USDT",
-    "XRP-USDT", "DOT-USDT", "TRX-USDT", "LTC-USDT", "LINK-USDT", "BCH-USDT",
-    "UNI-USDT", "XLM-USDT", "ATOM-USDT", "NEAR-USDT", "ETC-USDT", "APT-USDT",
-    "FIL-USDT", "EGLD-USDT", "SAND-USDT", "AAVE-USDT", "FTM-USDT", "GRT-USDT", "RUNE-USDT"
-]
-
-INTERVAL = "1h"
-LIMIT = 50
-
-STOP_LOSS_PCT = 5
+STOP_LOSS_PCT = 3
 TRAILING_STOP_PCT = 3
 
-def send_telegram_message(message):
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    payload = {"chat_id": CHAT_ID, "text": message, "parse_mode": "Markdown"}
+def get_klines(symbol, interval='1h', limit=24):
+    url = f"https://api.kucoin.com/api/v1/market/candles?type={interval}&symbol={symbol}-USDT&limit={limit}"
     try:
-        requests.post(url, json=payload)
+        response = requests.get(url)
+        data = response.json()["data"]
+        df = pd.DataFrame(data, columns=["time", "open", "close", "high", "low", "volume", "turnover"])
+        df = df.iloc[::-1]  # Inverte para ordem cronológica
+        df[["open", "close", "high", "low", "volume"]] = df[["open", "close", "high", "low", "volume"]].astype(float)
+        return df
     except Exception as e:
-        print("Erro ao enviar mensagem:", e)
-
-def get_klines(symbol):
-    url = f"https://api.kucoin.com/api/v1/market/candles?type={INTERVAL}&symbol={symbol}&limit={LIMIT}"
-    response = requests.get(url)
-    data = response.json()
-    if "data" not in data or not data["data"]:
+        print(f"Erro ao buscar dados de {symbol}: {e}")
         return None
-    df = pd.DataFrame(data["data"], columns=["time", "open", "close", "high", "low", "volume", "turnover"])
-    df = df.iloc[::-1]
-    df["close"] = df["close"].astype(float)
-    df["high"] = df["high"].astype(float)
-    df["low"] = df["low"].astype(float)
-    df["time"] = pd.to_datetime(df["time"].astype(int), unit="s")
-    return df
 
 def analyze_symbol(symbol):
     df = get_klines(symbol)
@@ -61,66 +39,55 @@ def analyze_symbol(symbol):
     macd_calc = MACD(close=df["close"])
     macd_val = macd_calc.macd().iloc[-1]
     signal_val = macd_calc.macd_signal().iloc[-1]
+    
+    volume_avg = df["volume"].tail(20).mean()
+    volume_now = df["volume"].iloc[-1]
 
-    if 30 <= rsi <= 70 and macd_val > signal_val:
+    # Filtros de segurança
+    rsi_ok = 40 <= rsi <= 60
+    macd_ok = macd_val > signal_val
+    volume_ok = volume_now > volume_avg * 1.1
+    volatilidade_ok = volatility > 2
+
+    if rsi_ok and macd_ok and volume_ok and volatilidade_ok:
         grid_min = price_now * (1 - volatility / 100 / 2)
         grid_max = price_now * (1 + volatility / 100 / 2)
+        stop_loss = price_now * (1 - STOP_LOSS_PCT / 100)
 
         message = (
             f"🚨 *Oportunidade Detectada!*\n"
-            f"*Cripto:* {symbol}\n"
-            f"*Preço Atual:* {price_now:.2f} USDT\n"
-            f"*Volatilidade:* {volatility:.2f}%\n"
-            f"*RSI:* {rsi:.2f}\n"
-            f"*MACD > Sinal:* ✅\n"
-            f"*Faixa de Grid:* {grid_min:.2f} - {grid_max:.2f}\n"
-            f"*Stop Loss:* {price_now * (1 - STOP_LOSS_PCT / 100):.2f} (-{STOP_LOSS_PCT}%)\n"
-            f"*Trailing Stop:* {TRAILING_STOP_PCT}%"
+            f"🪙 *Cripto:* {symbol}\n"
+            f"💰 *Preço Atual:* {price_now:.2f} USDT\n"
+            f"📊 *Volatilidade 24h:* {volatility:.2f}%\n"
+            f"📈 *RSI (14):* {rsi:.2f}\n"
+            f"📉 *MACD > Sinal:* ✅\n"
+            f"📦 *Volume Atual:* {volume_now:.2f} (média: {volume_avg:.2f})\n"
+            f"🔁 *Faixa de Grid:* {grid_min:.2f} - {grid_max:.2f}\n"
+            f"🛡️ *Stop Loss:* {stop_loss:.2f} (-{STOP_LOSS_PCT}%)\n"
+            f"🎯 *Trailing Stop:* {TRAILING_STOP_PCT}%"
         )
         return message
     return None
 
-def resumo_geral():
-    resumo = "*📊 Resumo Geral - Análise de Mercado*\n\n"
-    for symbol in SYMBOLS:
-        df = get_klines(symbol)
-        if df is None or df.empty:
-            continue
-        price_now = df["close"].iloc[-1]
-        max_price = df["high"].max()
-        min_price = df["low"].min()
-        volatility = (max_price - min_price) / price_now * 100
-        rsi = RSIIndicator(close=df["close"], window=14).rsi().iloc[-1]
-        macd_calc = MACD(close=df["close"])
-        macd_val = macd_calc.macd().iloc[-1]
-        signal_val = macd_calc.macd_signal().iloc[-1]
-        resumo += (
-            f"*{symbol}*\n"
-            f"• Preço: {price_now:.2f} USDT\n"
-            f"• Volatilidade: {volatility:.2f}%\n"
-            f"• RSI: {rsi:.2f}\n"
-            f"• MACD > Sinal: {'✅' if macd_val > signal_val else '❌'}\n\n"
-        )
-    send_telegram_message(resumo)
+def send_telegram_message(message):
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    data = {"chat_id": CHAT_ID, "text": message, "parse_mode": "Markdown"}
+    response = requests.post(url, data=data)
+    if response.status_code != 200:
+        print(f"Erro ao enviar mensagem: {response.text}")
 
-def main():
-    contador_resumo = 0
-    while True:
-        for symbol in SYMBOLS:
-            msg = analyze_symbol(symbol)
-            if msg:
-                send_telegram_message(msg)
-            time.sleep(1)
+# Lista de moedas para monitorar
+symbols = [
+    "BTC", "ETH", "AVAX", "SOL", "ADA", "XRP", "MATIC", "AR", "RNDR", "LTC",
+    "FET", "OP", "INJ", "TIA", "NEAR", "DOGE", "PEPE", "BLUR", "SUI", "PYTH",
+    "ORDI", "TRB", "GALA", "ZRX", "MINA"
+]
 
-        contador_resumo += 1
-        if contador_resumo >= 3:  # a cada 3 horas
-            resumo_geral()
-            contador_resumo = 0
-
-        time.sleep(3600)
-
-if __name__ == "__main__":
-    main()
+# Executar análise
+for symbol in symbols:
+    msg = analyze_symbol(symbol)
+    if msg:
+        send_telegram_message(msg)
 
 
 
