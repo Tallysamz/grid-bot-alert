@@ -86,26 +86,9 @@ def send_telegram_message(message):
 
 # Lista de moedas para monitorar (sem ativos que deram problema)
 symbols = [
-    "BTC-USDT",
-    "ETH-USDT",
-    "SOL-USDT",
-    "XRP-USDT",
-    "ETH-USDC",
-    "SUI-USDT",
-    "ADA-USDT",
-    "PEPE-USDT",
-    "DOGE-USDT",
-    "XMR-USDT",
-    "ENA-USDT",
-    "USDC-USDT",
-    "LINK-USDT",
-    "HBAR-USDT",
-    "BNB-USDT",
-    "NEAR-USDT",
-    "TRX-USDT",
-    "AAVE-USDT",
-    "APT-USDT",
-    "ARB-USDT"
+    "BTC-USDT", "ETH-USDT", "XRP-USDT", "SOL-USDT", "ETH-USDC",
+    "XMR-USDT", "XMR-USDC", "DOGE-USDT", "ADA-USDT", "LINK-USDT",
+    "SUI-USDT", "PEPE-USDT", "ENA-USDT", "LTC-USDT", "USDC-USDT"
 ]
 
 def run_bot():
